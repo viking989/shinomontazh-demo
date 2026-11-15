@@ -1,0 +1,535 @@
+{
+  "id": "demo",
+  "config": {
+    "name": "ПИТЛЕЙН",
+    "specialization": "tire",
+    "tagline": "Переобуем.\nИ вы снова в пути.",
+    "description": "Шиномонтаж без лишних ожиданий. Узнайте стоимость и выберите удобное время — мы будем готовы к вашему приезду.",
+    "city": "Москва",
+    "address": "ул. Примерная, 12 · демонстрационный адрес",
+    "phone": "+7 (999) 000-00-00",
+    "email": "",
+    "telegram": "",
+    "links": {
+      "map": "",
+      "vk": "",
+      "whatsapp": ""
+    },
+    "accent": "#ff6b35",
+    "font": "manrope",
+    "logo": "",
+    "heroImage": "/assets/workshop.svg",
+    "gallery": [],
+    "benefits": [
+      {
+        "title": "Запись к точному времени",
+        "text": "Доступность каждого поста проверяется при записи."
+      },
+      {
+        "title": "Стоимость до визита",
+        "text": "Предварительный расчёт по выбранным параметрам."
+      },
+      {
+        "title": "Всё в одном месте",
+        "text": "Замена колёс, балансировка и ремонт шин."
+      }
+    ],
+    "reviews": [],
+    "legal": {
+      "operator": "Демонстрационная мастерская",
+      "inn": "",
+      "email": "",
+      "retentionDays": 365,
+      "privacyText": ""
+    },
+    "seo": {
+      "title": "ПИТЛЕЙН — шиномонтаж с онлайн-записью",
+      "description": "Выберите услугу, узнайте предварительную стоимость и запишитесь к удобному времени."
+    },
+    "sections": [
+      {
+        "id": "hero",
+        "visible": true
+      },
+      {
+        "id": "services",
+        "visible": true
+      },
+      {
+        "id": "calculator",
+        "visible": true
+      },
+      {
+        "id": "booking",
+        "visible": true
+      },
+      {
+        "id": "benefits",
+        "visible": true
+      },
+      {
+        "id": "gallery",
+        "visible": true
+      },
+      {
+        "id": "reviews",
+        "visible": true
+      },
+      {
+        "id": "contacts",
+        "visible": true
+      }
+    ],
+    "services": [
+      {
+        "id": "change",
+        "name": "Сезонная смена колёс",
+        "description": "Снятие, монтаж и балансировка четырёх колёс.",
+        "category": "Шиномонтаж",
+        "duration": 60,
+        "priceType": "fixed",
+        "price": 2400,
+        "active": true,
+        "parameters": [
+          {
+            "key": "diameter",
+            "label": "Диаметр колёс",
+            "options": [
+              {
+                "value": "r14-16",
+                "label": "R14–R16",
+                "surcharge": 0
+              },
+              {
+                "value": "r17-18",
+                "label": "R17–R18",
+                "surcharge": 800
+              },
+              {
+                "value": "r19-21",
+                "label": "R19–R21",
+                "surcharge": 1600
+              }
+            ]
+          },
+          {
+            "key": "car",
+            "label": "Ваш автомобиль",
+            "options": [
+              {
+                "value": "sedan",
+                "label": "Легковой",
+                "surcharge": 0
+              },
+              {
+                "value": "suv",
+                "label": "Кроссовер / SUV",
+                "surcharge": 600
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "balance",
+        "name": "Балансировка колёс",
+        "description": "Устраним вибрации для комфортной поездки.",
+        "category": "Шиномонтаж",
+        "duration": 40,
+        "priceType": "fixed",
+        "price": 1200,
+        "active": true,
+        "parameters": []
+      },
+      {
+        "id": "repair",
+        "name": "Ремонт прокола",
+        "description": "Диагностика повреждения и ремонт шины.",
+        "category": "Ремонт",
+        "duration": 30,
+        "priceType": "range",
+        "price": 600,
+        "priceMax": 1500,
+        "active": true,
+        "parameters": []
+      },
+      {
+        "id": "pressure",
+        "name": "Проверка давления",
+        "description": "Проверим и скорректируем давление в шинах.",
+        "category": "Обслуживание",
+        "duration": 10,
+        "priceType": "fixed",
+        "price": 200,
+        "active": true,
+        "parameters": []
+      }
+    ],
+    "schedule": {
+      "timezone": "Europe/Moscow",
+      "posts": 2,
+      "capacity": 2,
+      "step": 30,
+      "buffer": 0,
+      "horizon": 30,
+      "leadMinutes": 60,
+      "week": {
+        "1": [
+          {
+            "start": "09:00",
+            "end": "13:00"
+          },
+          {
+            "start": "14:00",
+            "end": "20:00"
+          }
+        ],
+        "2": [
+          {
+            "start": "09:00",
+            "end": "13:00"
+          },
+          {
+            "start": "14:00",
+            "end": "20:00"
+          }
+        ],
+        "3": [
+          {
+            "start": "09:00",
+            "end": "13:00"
+          },
+          {
+            "start": "14:00",
+            "end": "20:00"
+          }
+        ],
+        "4": [
+          {
+            "start": "09:00",
+            "end": "13:00"
+          },
+          {
+            "start": "14:00",
+            "end": "20:00"
+          }
+        ],
+        "5": [
+          {
+            "start": "09:00",
+            "end": "13:00"
+          },
+          {
+            "start": "14:00",
+            "end": "20:00"
+          }
+        ],
+        "6": [
+          {
+            "start": "09:00",
+            "end": "13:00"
+          },
+          {
+            "start": "14:00",
+            "end": "20:00"
+          }
+        ],
+        "7": [
+          {
+            "start": "09:00",
+            "end": "13:00"
+          },
+          {
+            "start": "14:00",
+            "end": "20:00"
+          }
+        ]
+      },
+      "exceptions": [],
+      "blocks": []
+    },
+    "demo": false
+  },
+  "manifest": {
+    "id": "tire-workshop",
+    "name": "Шиномонтаж",
+    "version": "1.0.0",
+    "schemaVersion": 1,
+    "category": "Автосервис",
+    "description": "Сайт мастерской с расчётом стоимости, онлайн-записью и личной админ-панелью.",
+    "renderer": "tire",
+    "capabilities": [
+      "booking",
+      "gallery",
+      "reviews"
+    ],
+    "editableFields": [
+      "name",
+      "tagline",
+      "description",
+      "contacts",
+      "services",
+      "schedule",
+      "branding",
+      "sections",
+      "legal",
+      "seo"
+    ],
+    "migrations": [
+      "tenant-v1"
+    ],
+    "defaults": {
+      "name": "ПИТЛЕЙН",
+      "specialization": "tire",
+      "tagline": "Переобуем.\nИ вы снова в пути.",
+      "description": "Шиномонтаж без лишних ожиданий. Узнайте стоимость и выберите удобное время — мы будем готовы к вашему приезду.",
+      "city": "Москва",
+      "address": "ул. Примерная, 12 · демонстрационный адрес",
+      "phone": "+7 (999) 000-00-00",
+      "email": "",
+      "telegram": "",
+      "links": {
+        "map": "",
+        "vk": "",
+        "whatsapp": ""
+      },
+      "accent": "#ff6b35",
+      "font": "manrope",
+      "logo": "",
+      "heroImage": "/assets/workshop.svg",
+      "gallery": [],
+      "benefits": [
+        {
+          "title": "Запись к точному времени",
+          "text": "Доступность каждого поста проверяется при записи."
+        },
+        {
+          "title": "Стоимость до визита",
+          "text": "Предварительный расчёт по выбранным параметрам."
+        },
+        {
+          "title": "Всё в одном месте",
+          "text": "Замена колёс, балансировка и ремонт шин."
+        }
+      ],
+      "reviews": [],
+      "legal": {
+        "operator": "Демонстрационная мастерская",
+        "inn": "",
+        "email": "",
+        "retentionDays": 365,
+        "privacyText": ""
+      },
+      "seo": {
+        "title": "ПИТЛЕЙН — шиномонтаж с онлайн-записью",
+        "description": "Выберите услугу, узнайте предварительную стоимость и запишитесь к удобному времени."
+      },
+      "sections": [
+        {
+          "id": "hero",
+          "visible": true
+        },
+        {
+          "id": "services",
+          "visible": true
+        },
+        {
+          "id": "calculator",
+          "visible": true
+        },
+        {
+          "id": "booking",
+          "visible": true
+        },
+        {
+          "id": "benefits",
+          "visible": true
+        },
+        {
+          "id": "gallery",
+          "visible": true
+        },
+        {
+          "id": "reviews",
+          "visible": true
+        },
+        {
+          "id": "contacts",
+          "visible": true
+        }
+      ],
+      "services": [
+        {
+          "id": "change",
+          "name": "Сезонная смена колёс",
+          "description": "Снятие, монтаж и балансировка четырёх колёс.",
+          "category": "Шиномонтаж",
+          "duration": 60,
+          "priceType": "fixed",
+          "price": 2400,
+          "active": true,
+          "parameters": [
+            {
+              "key": "diameter",
+              "label": "Диаметр колёс",
+              "options": [
+                {
+                  "value": "r14-16",
+                  "label": "R14–R16",
+                  "surcharge": 0
+                },
+                {
+                  "value": "r17-18",
+                  "label": "R17–R18",
+                  "surcharge": 800
+                },
+                {
+                  "value": "r19-21",
+                  "label": "R19–R21",
+                  "surcharge": 1600
+                }
+              ]
+            },
+            {
+              "key": "car",
+              "label": "Ваш автомобиль",
+              "options": [
+                {
+                  "value": "sedan",
+                  "label": "Легковой",
+                  "surcharge": 0
+                },
+                {
+                  "value": "suv",
+                  "label": "Кроссовер / SUV",
+                  "surcharge": 600
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "balance",
+          "name": "Балансировка колёс",
+          "description": "Устраним вибрации для комфортной поездки.",
+          "category": "Шиномонтаж",
+          "duration": 40,
+          "priceType": "fixed",
+          "price": 1200,
+          "active": true,
+          "parameters": []
+        },
+        {
+          "id": "repair",
+          "name": "Ремонт прокола",
+          "description": "Диагностика повреждения и ремонт шины.",
+          "category": "Ремонт",
+          "duration": 30,
+          "priceType": "range",
+          "price": 600,
+          "priceMax": 1500,
+          "active": true,
+          "parameters": []
+        },
+        {
+          "id": "pressure",
+          "name": "Проверка давления",
+          "description": "Проверим и скорректируем давление в шинах.",
+          "category": "Обслуживание",
+          "duration": 10,
+          "priceType": "fixed",
+          "price": 200,
+          "active": true,
+          "parameters": []
+        }
+      ],
+      "schedule": {
+        "timezone": "Europe/Moscow",
+        "posts": 2,
+        "capacity": 2,
+        "step": 30,
+        "buffer": 0,
+        "horizon": 30,
+        "leadMinutes": 60,
+        "week": {
+          "1": [
+            {
+              "start": "09:00",
+              "end": "13:00"
+            },
+            {
+              "start": "14:00",
+              "end": "20:00"
+            }
+          ],
+          "2": [
+            {
+              "start": "09:00",
+              "end": "13:00"
+            },
+            {
+              "start": "14:00",
+              "end": "20:00"
+            }
+          ],
+          "3": [
+            {
+              "start": "09:00",
+              "end": "13:00"
+            },
+            {
+              "start": "14:00",
+              "end": "20:00"
+            }
+          ],
+          "4": [
+            {
+              "start": "09:00",
+              "end": "13:00"
+            },
+            {
+              "start": "14:00",
+              "end": "20:00"
+            }
+          ],
+          "5": [
+            {
+              "start": "09:00",
+              "end": "13:00"
+            },
+            {
+              "start": "14:00",
+              "end": "20:00"
+            }
+          ],
+          "6": [
+            {
+              "start": "09:00",
+              "end": "13:00"
+            },
+            {
+              "start": "14:00",
+              "end": "20:00"
+            }
+          ],
+          "7": [
+            {
+              "start": "09:00",
+              "end": "13:00"
+            },
+            {
+              "start": "14:00",
+              "end": "20:00"
+            }
+          ]
+        },
+        "exceptions": [],
+        "blocks": []
+      },
+      "demo": true
+    }
+  },
+  "credentials": {
+    "username": "admin"
+  }
+}
