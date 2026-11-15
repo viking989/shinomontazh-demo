@@ -540,8 +540,12 @@ var Store = class {
   }
   preparedCredentials(scope2, db, username, preparedHash) {
     if (!db.prepare("SELECT id FROM users").get()) {
-      if (!/^[A-Za-z0-9._-]{3,64}$/.test(username) || !/^[a-f0-9]{32}:[a-f0-9]{128}$/.test(preparedHash))
-        throw new Error("Invalid prepared administrator credentials");
+      if (!/^[A-Za-z0-9._-]{3,64}$/.test(username))
+        throw new Error("Invalid prepared administrator username");
+      if (!/^[a-f0-9]{32}:[a-f0-9]{128}$/.test(preparedHash)) {
+        if (process.env.ADMIN_PASSWORD) return this.credentials(scope2, db, process.env.ADMIN_PASSWORD);
+        throw new Error("Set ADMIN_PASSWORD for the demo administrator");
+      }
       db.prepare("INSERT INTO users(id,username,password,changed_at) VALUES(1,?,?,?)").run(
         username,
         preparedHash,

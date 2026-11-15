@@ -20,3 +20,5 @@ services:
         value: "false"
       - key: TZ
         value: Europe/Moscow
+      - key: ADMIN_PASSWORD
+        sync: false
