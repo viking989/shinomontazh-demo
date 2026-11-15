@@ -3018,8 +3018,8 @@ function Calculator({
 // apps/api/server.ts
 var sourceDir = process.cwd();
 existsSync5(join5(sourceDir, ".env")) && process.loadEnvFile(join5(sourceDir, ".env"));
-var production = process.env.NODE_ENV === "production", demoMode = !production && process.env.DEMO_MODE !== "false", port = Number(process.env.PORT ?? 3100), host = process.env.HOST ?? "127.0.0.1", origin = (process.env.PUBLIC_ORIGIN ?? `http://localhost:${port}`).replace(/\/$/, ""), url = new URL(origin);
-if (production && (url.protocol !== "https:" || !process.env.PUBLIC_ORIGIN))
+var production = process.env.NODE_ENV === "production", demoMode = !production && process.env.DEMO_MODE !== "false", port = Number(process.env.PORT ?? 3100), host = process.env.HOST ?? "127.0.0.1", origin = (process.env.PUBLIC_ORIGIN ?? process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${port}`).replace(/\/$/, ""), url = new URL(origin);
+if (production && (url.protocol !== "https:" || (!process.env.PUBLIC_ORIGIN && !process.env.RENDER_EXTERNAL_URL)))
   throw new Error(
     "Production requires PUBLIC_ORIGIN=https://your-domain.ru and a TLS reverse proxy"
   );
