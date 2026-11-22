@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, te
 CREATE TABLE IF NOT EXISTS releases (id INTEGER PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), revision INTEGER NOT NULL, config TEXT NOT NULL, status TEXT NOT NULL, steps TEXT NOT NULL, error TEXT, created_at INTEGER NOT NULL);
 `, tenantSql = `${authSql}
 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), config TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, template TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE, notes TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE, notes TEXT NOT NULL DEFAULT '', license_plate TEXT NOT NULL DEFAULT '', vin TEXT NOT NULL DEFAULT '', mileage INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS bookings (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id INTEGER NOT NULL REFERENCES clients(id), name TEXT NOT NULL, phone TEXT NOT NULL,
  service_id TEXT NOT NULL, service_name TEXT NOT NULL, parameters TEXT NOT NULL, services_snapshot TEXT, note TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL, duration INTEGER NOT NULL,
  post INTEGER NOT NULL, price INTEGER NOT NULL, price_max INTEGER NOT NULL, actual INTEGER, status TEXT NOT NULL CHECK(status IN ('booked','arrived','working','completed','cancelled','no_show')),
@@ -92,6 +92,14 @@ var text = (max = 200) => z.string().trim().max(max), slugSchema = z.string().re
 ), configSchema = z.object({
   name: text(100).min(2),
   specialization: z.enum(["tire", "auto", "mixed"]).default("tire"),
+  specializationLabel: text(100).default(""),
+  brandTitle: text(80).default(""),
+  brandSubtitle: text(80).default(""),
+  heroEyebrow: text(120).default(""),
+  servicesEyebrow: text(80).default(""),
+  servicesTitle: text(180).default(""),
+  benefitsEyebrow: text(80).default(""),
+  benefitsTitle: text(140).default(""),
   tagline: text(140).min(3),
   description: text(700),
   city: text(80),
@@ -212,6 +220,7 @@ var serviceSelectionSchema = z.object({
   consent: z.literal(!0, {
     error: "\u041D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u043E \u0441\u043E\u0433\u043B\u0430\u0441\u0438\u0435 \u043D\u0430 \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0443 \u0434\u0430\u043D\u043D\u044B\u0445"
   }),
+  actual: z.number().nonnegative().optional(),
   idempotencyKey: z.uuid(),
   website: z.literal("").default(""),
   startedAt: z.number().int()
@@ -229,6 +238,14 @@ var serviceSelectionSchema = z.object({
 })), defaultConfig = {
   name: "\u041F\u0418\u0422\u041B\u0415\u0419\u041D",
   specialization: "tire",
+  specializationLabel: "",
+  brandTitle: "",
+  brandSubtitle: "",
+  heroEyebrow: "",
+  servicesEyebrow: "",
+  servicesTitle: "",
+  benefitsEyebrow: "",
+  benefitsTitle: "",
   tagline: `\u041F\u0435\u0440\u0435\u043E\u0431\u0443\u0435\u043C.
 \u0418 \u0432\u044B \u0441\u043D\u043E\u0432\u0430 \u0432 \u043F\u0443\u0442\u0438.`,
   description: "\u0428\u0438\u043D\u043E\u043C\u043E\u043D\u0442\u0430\u0436 \u0431\u0435\u0437 \u043B\u0438\u0448\u043D\u0438\u0445 \u043E\u0436\u0438\u0434\u0430\u043D\u0438\u0439. \u0423\u0437\u043D\u0430\u0439\u0442\u0435 \u0441\u0442\u043E\u0438\u043C\u043E\u0441\u0442\u044C \u0438 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0443\u0434\u043E\u0431\u043D\u043E\u0435 \u0432\u0440\u0435\u043C\u044F \u2014 \u043C\u044B \u0431\u0443\u0434\u0435\u043C \u0433\u043E\u0442\u043E\u0432\u044B \u043A \u0432\u0430\u0448\u0435\u043C\u0443 \u043F\u0440\u0438\u0435\u0437\u0434\u0443.",
@@ -483,9 +500,9 @@ function migrateStudio(db) {
   migrateAuth(db, "owner"), addColumn(db, "projects", "admin_login", "TEXT NOT NULL DEFAULT 'admin'"), addColumn(db, "projects", "admin_password_hash", "TEXT");
 }
 function migrateTenant(db) {
-  if (migrateAuth(db, "admin"), db.prepare("PRAGMA user_version").get().user_version > 2) throw new Error("Tenant database schema is newer than this application");
+  if (migrateAuth(db, "admin"), db.prepare("PRAGMA user_version").get().user_version > 3) throw new Error("Tenant database schema is newer than this application");
   transaction(db, () => {
-    db.prepare("PRAGMA table_info(bookings)").all().some((column) => column.name === "services_snapshot") || db.exec("ALTER TABLE bookings ADD COLUMN services_snapshot TEXT"), db.prepare("PRAGMA table_info(notifications)").all().some((column) => column.name === "message") || db.exec("ALTER TABLE notifications ADD COLUMN message TEXT"), db.exec("PRAGMA user_version=2");
+    db.prepare("PRAGMA table_info(bookings)").all().some((column) => column.name === "services_snapshot") || db.exec("ALTER TABLE bookings ADD COLUMN services_snapshot TEXT"), db.prepare("PRAGMA table_info(notifications)").all().some((column) => column.name === "message") || db.exec("ALTER TABLE notifications ADD COLUMN message TEXT"), addColumn(db, "clients", "license_plate", "TEXT NOT NULL DEFAULT ''"), addColumn(db, "clients", "vin", "TEXT NOT NULL DEFAULT ''"), addColumn(db, "clients", "mileage", "INTEGER"), db.exec("PRAGMA user_version=3");
   });
 }
 function transaction(db, fn) {
@@ -540,12 +557,8 @@ var Store = class {
   }
   preparedCredentials(scope2, db, username, preparedHash) {
     if (!db.prepare("SELECT id FROM users").get()) {
-      if (!/^[A-Za-z0-9._-]{3,64}$/.test(username))
-        throw new Error("Invalid prepared administrator username");
-      if (!/^[a-f0-9]{32}:[a-f0-9]{128}$/.test(preparedHash)) {
-        if (process.env.ADMIN_PASSWORD) return this.credentials(scope2, db, process.env.ADMIN_PASSWORD);
-        throw new Error("Set ADMIN_PASSWORD for the demo administrator");
-      }
+      if (!/^[A-Za-z0-9._-]{3,64}$/.test(username) || !/^[a-f0-9]{32}:[a-f0-9]{128}$/.test(preparedHash))
+        throw new Error("Invalid prepared administrator credentials");
       db.prepare("INSERT INTO users(id,username,password,changed_at) VALUES(1,?,?,?)").run(
         username,
         preparedHash,
@@ -754,7 +767,15 @@ function createBooking(db, input, options = {}) {
     }
     let config = readConfig(db).config, calc = quoteServices(config, data.services), first = calc.services[0], start = Date.parse(data.start), date = DateTime.fromMillis(start, {
       zone: config.schedule.timezone
-    }).toISODate(), slot = slots(
+    }).toISODate(), slot = options.historical ? (() => {
+      let post = availablePost(
+        db,
+        config,
+        start,
+        start + (calc.duration + config.schedule.buffer) * 6e4
+      );
+      return post ? { post } : void 0;
+    })() : slots(
       db,
       config,
       first.serviceId,
@@ -803,7 +824,10 @@ function createBooking(db, input, options = {}) {
       now + 864e5,
       now
     ), id = Number(result.lastInsertRowid);
-    db.prepare(
+    options.admin && data.actual !== void 0 && db.prepare("UPDATE bookings SET actual=?,status='completed' WHERE id=?").run(
+      data.actual,
+      id
+    ), db.prepare(
       "INSERT INTO booking_history(booking_id,action,detail,created_at) VALUES(?,?,?,?)"
     ).run(
       id,
@@ -960,10 +984,16 @@ function initialize(store2, {
       manifestSchema.parse(source.manifest),
       source.credentials
     );
-    existsSync2(join2(sourceDir2, "deploy/seed-uploads")) && !existsSync2(join2(store2.dir, "uploads", singleSite2)) && cpSync(
+    let current = readConfig(db2).config, renamed = !1;
+    if (/^Шиномо/i.test(current.name))
+      current.name = "АВТОСЕРВИС", renamed = !0;
+    if (/шиномо/i.test(current.seo.title))
+      current.seo.title = "АВТОСЕРВИС", renamed = !0;
+    renamed && (setConfig(db2, current), audit(db2, "settings.brand-renamed", "site", { name: current.name, title: current.seo.title }));
+    existsSync2(join2(sourceDir2, "deploy/seed-uploads")) && cpSync(
       join2(sourceDir2, "deploy/seed-uploads"),
       join2(store2.dir, "uploads"),
-      { recursive: !0 }
+      { recursive: !0, force: !1, errorOnExist: !1 }
     );
     return;
   }
@@ -1697,13 +1727,13 @@ function createApp(store2, options) {
   }), app2.post("/api/s/:site/admin/bookings/:id/message", async (c) => {
     let data = await jsonBody(c, z4.object({ text: z4.string().min(1).max(1e3) }));
     return c.json(queueManualMessage(c.get("db"), Number(c.req.param("id")), data.text), 201);
-  }), app2.post(
-    "/api/s/:site/admin/bookings",
-    async (c) => c.json(
-      createBooking(c.get("db"), await c.req.json(), { admin: !0 }),
+  }), app2.post("/api/s/:site/admin/bookings", async (c) => {
+    let input = await c.req.json(), historical = typeof input.start == "string" && Date.parse(input.start) < Date.now();
+    return c.json(
+      createBooking(c.get("db"), input, { admin: !0, historical }),
       201
-    )
-  ), app2.patch(
+    );
+  }), app2.patch(
     "/api/s/:site/admin/bookings/:id",
     async (c) => c.json(
       updateBooking(c.get("db"), Number(c.req.param("id")), await c.req.json())
@@ -1717,9 +1747,65 @@ function createApp(store2, options) {
         "SELECT * FROM bookings WHERE client_id=? AND deleted_at IS NULL ORDER BY start DESC"
       ).all(Number(c.req.param("id"))).map(publicBooking)
     });
+  }), app2.post("/api/s/:site/admin/clients", async (c) => {
+    let data = await jsonBody(
+      c,
+      z4.object({
+        name: z4.string().trim().min(2).max(120),
+        phone: z4.string().trim().min(5).max(32),
+        notes: z4.string().max(5e3).default(""),
+        license_plate: z4.string().trim().max(20).optional(),
+        vin: z4.string().trim().max(17).optional(),
+        mileage: z4.number().int().min(0).max(9999999).nullable().optional()
+      })
+    ), phone = normalizePhone(data.phone), db = c.get("db"), existing = db.prepare("SELECT * FROM clients WHERE phone=?").get(phone);
+    if (existing)
+      return db.prepare("UPDATE clients SET name=?,notes=?,license_plate=?,vin=?,mileage=? WHERE id=?").run(
+        data.name,
+        data.notes,
+        data.license_plate ? data.license_plate.toUpperCase() : existing.license_plate,
+        data.vin ? data.vin.toUpperCase() : existing.vin,
+        data.mileage == null ? existing.mileage : data.mileage,
+        existing.id
+      ), audit(db, "client.updated", String(existing.id), { source: "admin" }), c.json(db.prepare("SELECT * FROM clients WHERE id=?").get(existing.id));
+    let result = db.prepare("INSERT INTO clients(name,phone,notes,license_plate,vin,mileage,created_at) VALUES(?,?,?,?,?,?,?)").run(data.name, phone, data.notes, (data.license_plate ?? "").toUpperCase(), (data.vin ?? "").toUpperCase(), data.mileage ?? null, Date.now()), id = Number(result.lastInsertRowid);
+    return audit(db, "client.created", String(id), { source: "admin" }), c.json(db.prepare("SELECT * FROM clients WHERE id=?").get(id), 201);
   }), app2.patch("/api/s/:site/admin/clients/:id", async (c) => {
-    let data = await jsonBody(c, z4.object({ notes: z4.string().max(5e3) }));
-    return c.get("db").prepare("UPDATE clients SET notes=? WHERE id=?").run(data.notes, Number(c.req.param("id"))), audit(c.get("db"), "client.notes", c.req.param("id"), {}), c.json({ ok: !0 });
+    let data = await jsonBody(
+      c,
+      z4.object({
+        name: z4.string().trim().min(2).max(120).optional(),
+        phone: z4.string().trim().min(5).max(32).optional(),
+        notes: z4.string().max(5e3).optional(),
+        license_plate: z4.string().trim().max(20).optional(),
+        vin: z4.string().trim().max(17).optional(),
+        mileage: z4.number().int().min(0).max(9999999).nullable().optional()
+      })
+    ), db = c.get("db"), id = Number(c.req.param("id")), old = db.prepare("SELECT * FROM clients WHERE id=?").get(id);
+    if (!old) throw new DomainError(404, "\u041A\u043B\u0438\u0435\u043D\u0442 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D");
+    let phone = data.phone ? normalizePhone(data.phone) : old.phone;
+    if (db.prepare("SELECT id FROM clients WHERE phone=? AND id<>?").get(phone, id)) throw new DomainError(409, "\u041A\u043B\u0438\u0435\u043D\u0442 \u0441 \u0442\u0430\u043A\u0438\u043C \u0442\u0435\u043B\u0435\u0444\u043E\u043D\u043E\u043C \u0443\u0436\u0435 \u0435\u0441\u0442\u044C");
+    return db.prepare("UPDATE clients SET name=?,phone=?,notes=?,license_plate=?,vin=?,mileage=? WHERE id=?").run(
+      data.name ?? old.name,
+      phone,
+      data.notes ?? old.notes,
+      data.license_plate === void 0 ? old.license_plate : data.license_plate.toUpperCase(),
+      data.vin === void 0 ? old.vin : data.vin.toUpperCase(),
+      data.mileage === void 0 ? old.mileage : data.mileage,
+      id
+    ), audit(db, "client.updated", String(id), {}), c.json(db.prepare("SELECT * FROM clients WHERE id=?").get(id));
+  }), app2.delete("/api/s/:site/admin/clients/:id", (c) => {
+    let db = c.get("db"), id = Number(c.req.param("id"));
+    if (!db.prepare("SELECT id FROM clients WHERE id=?").get(id))
+      throw new DomainError(404, "\u041A\u043B\u0438\u0435\u043D\u0442 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D");
+    if (db.prepare(
+      "SELECT COUNT(*) AS count FROM bookings WHERE client_id=? AND deleted_at IS NULL"
+    ).get(id).count)
+      throw new DomainError(
+        409,
+        "\u041D\u0435\u043B\u044C\u0437\u044F \u0443\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043B\u0438\u0435\u043D\u0442\u0430: \u0443 \u043D\u0435\u0433\u043E \u0435\u0441\u0442\u044C \u0437\u0430\u043F\u0438\u0441\u0438. \u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u043E\u0442\u043C\u0435\u043D\u0438\u0442\u0435 \u0438\u043B\u0438 \u0443\u0434\u0430\u043B\u0438\u0442\u0435 \u0438\u0445."
+      );
+    return db.prepare("DELETE FROM clients WHERE id=?").run(id), audit(db, "client.deleted", String(id), {}), c.json({ ok: !0 });
   }), app2.put("/api/s/:site/admin/config", async (c) => {
     let data = await jsonBody(
       c,
@@ -1729,12 +1815,12 @@ function createApp(store2, options) {
       let old = readConfig(db);
       if (old.revision !== data.revision)
         throw new DomainError(409, "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u044B. \u041E\u0431\u043D\u043E\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443.");
-      let allowed = {
+      let submittedIds = new Set(data.config.services.map((service) => service.id)), preservedServices = old.config.services.filter((service) => !submittedIds.has(service.id)).map((service) => ({ ...service, active: !1 })), allowed = {
         ...old.config,
-        services: data.config.services,
+        services: [...data.config.services, ...preservedServices],
         schedule: data.config.schedule
       };
-      if (JSON.stringify(allowed) !== JSON.stringify(data.config))
+      if (JSON.stringify({ ...allowed, services: data.config.services }) !== JSON.stringify(data.config))
         throw new DomainError(403, "\u0418\u0437\u043C\u0435\u043D\u044F\u0442\u044C \u0434\u0430\u043D\u043D\u044B\u0435 \u0441\u0430\u0439\u0442\u0430 \u043C\u043E\u0436\u0435\u0442 \u0442\u043E\u043B\u044C\u043A\u043E \u0432\u043B\u0430\u0434\u0435\u043B\u0435\u0446 \u043A\u043E\u043D\u0432\u0435\u0439\u0435\u0440\u0430");
       validateScheduleChange(db, data.config), setConfig(db, allowed), audit(db, "settings.updated", "site", {});
     }), c.json({ ok: !0 });
@@ -1888,6 +1974,7 @@ var send = (url2, data, method = "POST") => api(url2, { method, body: JSON.strin
 
 // apps/web/src/booking.tsx
 import { useState as useState2, useEffect as useEffect2, useRef as useRef2 } from "react";
+import { DateTime as DateTime6 } from "luxon";
 import {
   ArrowRight as ArrowRight2,
   CalendarDays,
@@ -1999,7 +2086,7 @@ function BookingForm({
     ] : [];
   }), [step, setStep] = useState2(1), [date, setDate] = useState2(
     initialDate ?? dateKey(config.schedule.timezone)
-  ), [start, setStart] = useState2(""), [available, setAvailable] = useState2([]), [loading, setLoading] = useState2(!1), [refresh, setRefresh] = useState2(0), [estimate, setEstimate] = useState2(null), [quoteError, setQuoteError] = useState2(null), [name, setName] = useState2(""), [phone, setPhone] = useState2(""), [note, setNote] = useState2(""), [consent, setConsent] = useState2(!1), [website, setWebsite] = useState2(""), [error, setError] = useState2(null), [busy, setBusy] = useState2(!1), [success, setSuccess] = useState2(null), begun = useRef2(Date.now()), lastRequest = useRef2({ fingerprint: "", key: crypto.randomUUID() }), resultRef = useRef2(null), serviceIdsKey = JSON.stringify(selections.map((s) => s.serviceId)), initialParametersKey = JSON.stringify(initialParameters ?? {}), today = dateKey(config.schedule.timezone);
+  ), [start, setStart] = useState2(""), [historicalTime, setHistoricalTime] = useState2("12:00"), [actual, setActual] = useState2(""), [available, setAvailable] = useState2([]), [loading, setLoading] = useState2(!1), [refresh, setRefresh] = useState2(0), [estimate, setEstimate] = useState2(null), [quoteError, setQuoteError] = useState2(null), [name, setName] = useState2(""), [phone, setPhone] = useState2(""), [note, setNote] = useState2(""), [consent, setConsent] = useState2(!1), [website, setWebsite] = useState2(""), [error, setError] = useState2(null), [busy, setBusy] = useState2(!1), [success, setSuccess] = useState2(null), begun = useRef2(Date.now()), lastRequest = useRef2({ fingerprint: "", key: crypto.randomUUID() }), resultRef = useRef2(null), serviceIdsKey = JSON.stringify(selections.map((s) => s.serviceId)), initialParametersKey = JSON.stringify(initialParameters ?? {}), today = dateKey(config.schedule.timezone), historical = admin && date < today;
   useEffect2(() => {
     initialService && services.some((s) => s.id === initialService) && (setSelections([
       {
@@ -2044,6 +2131,14 @@ function BookingForm({
       setAvailable([]), setLoading(!1);
       return;
     }
+    if (historical) {
+      setAvailable([]), setStart(
+        DateTime6.fromISO(date + "T" + historicalTime, {
+          zone: config.schedule.timezone
+        }).toISO() ?? ""
+      ), setLoading(!1);
+      return;
+    }
     let alive = !0;
     return setLoading(!0), setStart(""), setError(null), api(
       `/api/s/${siteId}/slots?services=${encodeURIComponent(serviceIdsKey)}&date=${date}`
@@ -2056,7 +2151,7 @@ function BookingForm({
     }), () => {
       alive = !1;
     };
-  }, [siteId, serviceIdsKey, date, refresh, preview, config.schedule]);
+  }, [siteId, serviceIdsKey, date, refresh, preview, config.schedule, historical, historicalTime]);
   async function submit() {
     if (preview || busy || !selections.length || !estimate || !start) return;
     setBusy(!0), setError(null);
@@ -2067,7 +2162,8 @@ function BookingForm({
       note,
       start,
       consent,
-      website
+      website,
+      ...admin && actual.trim() ? { actual: Number(actual) } : {}
     }, fingerprint = JSON.stringify(payload);
     lastRequest.current.fingerprint !== fingerprint && (lastRequest.current = { fingerprint, key: crypto.randomUUID() });
     try {
@@ -2268,14 +2364,24 @@ function BookingForm({
                     label: `\u0414\u0430\u0442\u0430 \u0432\u0438\u0437\u0438\u0442\u0430 \xB7 ${config.schedule.timezone}`,
                     type: "date",
                     value: date,
-                    min: today,
-                    max: shiftDay(today, config.schedule.horizon - 1),
+                    min: admin ? void 0 : today,
+                    max: admin ? void 0 : shiftDay(today, config.schedule.horizon - 1),
                     onChange: (e) => {
                       e.target.value && setDate(e.target.value);
                     },
                     required: !0
                   }
                 ),
+                historical ? /* @__PURE__ */ jsx2(
+                  Field,
+                  {
+                    label: "\u0412\u0440\u0435\u043C\u044F \u0432\u0438\u0437\u0438\u0442\u0430",
+                    type: "time",
+                    value: historicalTime,
+                    onChange: (e) => setHistoricalTime(e.target.value),
+                    required: !0
+                  }
+                ) : null,
                 /* @__PURE__ */ jsx2("div", { className: "date-chips", children: Array.from({ length: 5 }, (_, i) => shiftDay(today, i)).map(
                   (d) => /* @__PURE__ */ jsxs2(
                     "button",
@@ -2374,6 +2480,16 @@ function BookingForm({
                     rows: 2
                   }
                 ),
+                admin ? /* @__PURE__ */ jsx2(
+                  Field,
+                  {
+                    label: "\u0424\u0430\u043A\u0442\u0438\u0447\u0435\u0441\u043A\u0438 \u043E\u043F\u043B\u0430\u0447\u0435\u043D\u043E, \u20BD (\u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E)",
+                    type: "number",
+                    min: 0,
+                    value: actual,
+                    onChange: (e) => setActual(e.target.value)
+                  }
+                ) : null,
                 /* @__PURE__ */ jsxs2("label", { className: "honeypot", "aria-hidden": "true", children: [
                   "\u0412\u0430\u0448 \u0441\u0430\u0439\u0442",
                   /* @__PURE__ */ jsx2(
@@ -2481,7 +2597,7 @@ function SiteBody({
   preview = !1,
   renderer = "tire"
 }) {
-  let [selected, setSelected] = useState3(), [selectedParameters, setSelectedParameters] = useState3(), [handoffRevision, setHandoffRevision] = useState3(0), [menu, setMenu] = useState3(!1), [bookingInView, setBookingInView] = useState3(!1), bookingEnabled = config.sections.some((s) => s.id === "booking" && s.visible) && config.services.some((service) => service.active), specialty = config.specialization === "auto" ? "\u0410\u0412\u0422\u041E\u0421\u0415\u0420\u0412\u0418\u0421" : config.specialization === "mixed" ? "\u0428\u0418\u041D\u041E\u041C\u041E\u041D\u0422\u0410\u0416 \u0418 \u0410\u0412\u0422\u041E\u0421\u0415\u0420\u0412\u0418\u0421" : "\u0428\u0418\u041D\u041E\u041C\u041E\u041D\u0422\u0410\u0416", serviceGroups = Object.entries(
+  let [selected, setSelected] = useState3(), [selectedParameters, setSelectedParameters] = useState3(), [handoffRevision, setHandoffRevision] = useState3(0), [menu, setMenu] = useState3(!1), [bookingInView, setBookingInView] = useState3(!1), bookingEnabled = config.sections.some((s) => s.id === "booking" && s.visible) && config.services.some((service) => service.active), specialty = config.specialization === "auto" ? "\u0410\u0412\u0422\u041E\u0421\u0415\u0420\u0412\u0418\u0421" : config.specialization === "mixed" ? "\u0428\u0418\u041D\u041E\u041C\u041E\u041D\u0422\u0410\u0416 \u0418 \u0410\u0412\u0422\u041E\u0421\u0415\u0420\u0412\u0418\u0421" : "\u0428\u0418\u041D\u041E\u041C\u041E\u041D\u0422\u0410\u0416", directionLabel = config.specializationLabel || specialty, brandTitle = config.brandTitle || config.name, brandSubtitle = config.brandSubtitle || directionLabel.toLowerCase(), heroEyebrow = config.heroEyebrow || `${renderer === "tire" ? directionLabel : "\u0423\u0421\u041B\u0423\u0413\u0418 \u0414\u041B\u042F \u0412\u0410\u0421"} \xB7 ${config.city.toUpperCase()}`, servicesEyebrow = config.servicesEyebrow || "01 / \u0423\u0421\u041B\u0423\u0413\u0418", servicesTitle = config.servicesTitle || (renderer === "tire" ? "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u0443\u0436\u043D\u044B\u0435 \u0440\u0430\u0431\u043E\u0442\u044B \u0438 \u0443\u0437\u043D\u0430\u0439\u0442\u0435 \u0446\u0435\u043D\u0443." : "\u0420\u0435\u0448\u0435\u043D\u0438\u044F \u0434\u043B\u044F \u0432\u0430\u0448\u0438\u0445 \u0437\u0430\u0434\u0430\u0447."), benefitsEyebrow = config.benefitsEyebrow || "\u041D\u0410\u0428 \u041F\u041E\u0414\u0425\u041E\u0414", benefitsTitle = config.benefitsTitle || "\u041F\u0440\u043E\u0441\u0442\u043E. \u041F\u043E\u043D\u044F\u0442\u043D\u043E. \u041F\u043E \u0434\u0435\u043B\u0443.", serviceGroups = Object.entries(
     config.services.filter((service) => service.active).reduce((groups, service) => ((groups[service.category || "\u0423\u0441\u043B\u0443\u0433\u0438"] ??= []).push(service), groups), {})
   );
   useEffect3(() => {
@@ -2503,10 +2619,7 @@ function SiteBody({
       /* @__PURE__ */ jsxs3("div", { className: "hero-copy", children: [
         /* @__PURE__ */ jsxs3("span", { className: "site-eyebrow", children: [
           /* @__PURE__ */ jsx3("i", {}),
-          renderer === "tire" ? specialty : "\u0423\u0421\u041B\u0423\u0413\u0418 \u0414\u041B\u042F \u0412\u0410\u0421",
-          " \xB7",
-          " ",
-          config.city.toUpperCase()
+          heroEyebrow
         ] }),
         /* @__PURE__ */ jsx3("h1", { children: config.tagline.split(`
 `).map((t, i) => /* @__PURE__ */ jsx3("span", { children: t }, i)) }),
@@ -2563,8 +2676,8 @@ function SiteBody({
     services: /* @__PURE__ */ jsxs3("section", { className: "site-section", id: "services", children: [
       /* @__PURE__ */ jsxs3("div", { className: "site-section-heading", children: [
         /* @__PURE__ */ jsxs3("div", { children: [
-          /* @__PURE__ */ jsx3("span", { className: "eyebrow", children: "01 / \u0423\u0421\u041B\u0423\u0413\u0418" }),
-          /* @__PURE__ */ jsx3("h2", { children: renderer === "tire" ? "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043D\u0443\u0436\u043D\u044B\u0435 \u0440\u0430\u0431\u043E\u0442\u044B \u0438 \u0443\u0437\u043D\u0430\u0439\u0442\u0435 \u0446\u0435\u043D\u0443." : "\u0420\u0435\u0448\u0435\u043D\u0438\u044F \u0434\u043B\u044F \u0432\u0430\u0448\u0438\u0445 \u0437\u0430\u0434\u0430\u0447." })
+          /* @__PURE__ */ jsx3("span", { className: "eyebrow", children: servicesEyebrow }),
+          /* @__PURE__ */ jsx3("h2", { children: servicesTitle })
         ] }),
         bookingEnabled ? /* @__PURE__ */ jsxs3(
           "a",
@@ -2691,8 +2804,8 @@ function SiteBody({
       }
     ),
     benefits: config.benefits.length ? /* @__PURE__ */ jsxs3("section", { className: "site-section benefits-section", children: [
-      /* @__PURE__ */ jsx3("span", { className: "eyebrow", children: "\u041D\u0410\u0428 \u041F\u041E\u0414\u0425\u041E\u0414" }),
-      /* @__PURE__ */ jsx3("h2", { children: "\u041F\u0440\u043E\u0441\u0442\u043E. \u041F\u043E\u043D\u044F\u0442\u043D\u043E. \u041F\u043E \u0434\u0435\u043B\u0443." }),
+      /* @__PURE__ */ jsx3("span", { className: "eyebrow", children: benefitsEyebrow }),
+      /* @__PURE__ */ jsx3("h2", { children: benefitsTitle }),
       /* @__PURE__ */ jsx3("div", { className: "benefit-grid", children: config.benefits.map((b, i) => /* @__PURE__ */ jsxs3("div", { children: [
         /* @__PURE__ */ jsxs3("span", { children: [
           "0",
@@ -2827,8 +2940,8 @@ function SiteBody({
           /* @__PURE__ */ jsxs3("a", { className: "shop-brand", href: preview ? "#" : `/s/${siteId}`, children: [
             config.logo ? /* @__PURE__ */ jsx3("img", { src: config.logo, alt: "", width: "38", height: "38" }) : /* @__PURE__ */ jsx3(Disc3, { size: 31 }),
             /* @__PURE__ */ jsxs3("span", { children: [
-              config.name,
-              /* @__PURE__ */ jsx3("small", { children: renderer === "tire" ? specialty : "\u041B\u041E\u041A\u0410\u041B\u042C\u041D\u042B\u0419 \u0411\u0418\u0417\u041D\u0415\u0421" })
+              brandTitle,
+              /* @__PURE__ */ jsx3("small", { children: brandSubtitle })
             ] })
           ] }),
           /* @__PURE__ */ jsxs3("nav", { className: menu ? "open" : "", "aria-label": "\u041C\u0435\u043D\u044E \u0441\u0430\u0439\u0442\u0430", children: [
@@ -3022,8 +3135,8 @@ function Calculator({
 // apps/api/server.ts
 var sourceDir = process.cwd();
 existsSync5(join5(sourceDir, ".env")) && process.loadEnvFile(join5(sourceDir, ".env"));
-var production = process.env.NODE_ENV === "production", demoMode = !production && process.env.DEMO_MODE !== "false", port = Number(process.env.PORT ?? 3100), host = process.env.HOST ?? "127.0.0.1", origin = (process.env.PUBLIC_ORIGIN ?? process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${port}`).replace(/\/$/, ""), url = new URL(origin);
-if (production && (url.protocol !== "https:" || (!process.env.PUBLIC_ORIGIN && !process.env.RENDER_EXTERNAL_URL)))
+var production = process.env.NODE_ENV === "production", demoMode = !production && process.env.DEMO_MODE !== "false", port = Number(process.env.PORT ?? 3100), host = process.env.HOST ?? "127.0.0.1", origin = (process.env.PUBLIC_ORIGIN ?? `http://localhost:${port}`).replace(/\/$/, ""), url = new URL(origin);
+if (production && (url.protocol !== "https:" || !process.env.PUBLIC_ORIGIN))
   throw new Error(
     "Production requires PUBLIC_ORIGIN=https://your-domain.ru and a TLS reverse proxy"
   );
