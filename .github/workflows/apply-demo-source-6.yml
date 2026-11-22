@@ -1,0 +1,59 @@
+name: Apply demo-source-6 archive
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-demo-source-6.yml'
+permissions:
+  contents: write
+jobs:
+  replace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and replace all files with verified uploaded ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v zstd || (sudo apt-get update && sudo apt-get install -y zstd)
+          python3 - <<'PY'
+          import base64, hashlib, io, json, pathlib, subprocess, tarfile, tempfile
+          payload=base64.b64decode(pathlib.Path('.github/source6-patch.b64').read_text().strip())
+          target=pathlib.Path('/tmp/demo-source-6-extracted')
+          target.mkdir()
+          with tarfile.open(fileobj=io.BytesIO(payload)) as tar:
+              manifest=json.loads(tar.extractfile('manifest.json').read())
+              assert manifest['format']=='zstd-patch-manifest-v1'
+              for i, entry in enumerate(manifest['files']):
+                  path=pathlib.PurePosixPath(entry['path'])
+                  source=pathlib.PurePosixPath(entry['source'])
+                  assert not path.is_absolute() and '..' not in path.parts
+                  assert not source.is_absolute() and '..' not in source.parts
+                  original=pathlib.Path(source).read_bytes()
+                  if 'patch' in entry:
+                      patch=tar.extractfile(entry['patch']).read()
+                      with tempfile.TemporaryDirectory() as work:
+                          base=pathlib.Path(work)/'base'
+                          delta=pathlib.Path(work)/'delta'
+                          output=pathlib.Path(work)/'output'
+                          base.write_bytes(original)
+                          delta.write_bytes(patch)
+                          subprocess.run(['zstd','-q','-d','--patch-from='+str(base),str(delta),'-o',str(output)],check=True)
+                          data=output.read_bytes()
+                  else:
+                      data=original
+                  assert hashlib.sha256(data).hexdigest()==entry['sha256'], f"Mismatch: {path}"
+                  destination=target/path
+                  destination.parent.mkdir(parents=True,exist_ok=True)
+                  destination.write_bytes(data)
+              assert len(manifest['files'])==31
+          print('Successfully verified all 31 files.')
+          PY
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
+          cp -a /tmp/demo-source-6-extracted/. .
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Replace repository with demo-source-6 ZIP contents"
+          git push origin HEAD:main
