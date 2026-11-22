@@ -1,0 +1,41 @@
+name: Expand attached project archive
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/expand-uploaded-zip.yml'
+permissions:
+  contents: write
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Replace repository contents with ZIP files
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive='autoservice_vehicle_fields_fixed_client_v3 (1).zip'
+          test "$(git hash-object "$archive")" = "7efe2b0d1d4a95d08d6f70f532e06cf928332722"
+          temp_dir="$(mktemp -d)"
+          python3 - "$archive" "$temp_dir" <<'PY'
+          import pathlib, stat, sys, zipfile
+          archive, destination = sys.argv[1:]
+          with zipfile.ZipFile(archive) as z:
+              assert z.testzip() is None, "Archive integrity check failed"
+              for entry in z.infolist():
+                  path = pathlib.PurePosixPath(entry.filename)
+                  assert not path.is_absolute() and '..' not in path.parts, "Unsafe archive entry"
+                  assert (entry.external_attr >> 16) & 0o170000 != stat.S_IFLNK, "Archive symlinks not supported"
+              z.extractall(destination)
+          PY
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf -- {} +
+          cp -a "$temp_dir/." .
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Replace repository with extracted client v3 project"
+          git push origin HEAD:main
