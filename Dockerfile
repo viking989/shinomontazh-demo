@@ -4,7 +4,6 @@ COPY package*.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY dist ./dist
 COPY deploy ./deploy
-RUN chmod 644 /app/deploy/seed-uploads/demo/*.png
 RUN mkdir -p /data && chown node:node /data
 USER node
 EXPOSE 3100

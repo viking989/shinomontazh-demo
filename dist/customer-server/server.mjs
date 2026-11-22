@@ -36,7 +36,12 @@ CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, te
 CREATE TABLE IF NOT EXISTS releases (id INTEGER PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), revision INTEGER NOT NULL, config TEXT NOT NULL, status TEXT NOT NULL, steps TEXT NOT NULL, error TEXT, created_at INTEGER NOT NULL);
 `, tenantSql = `${authSql}
 CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), config TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, template TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE, notes TEXT NOT NULL DEFAULT '', license_plate TEXT NOT NULL DEFAULT '', vin TEXT NOT NULL DEFAULT '', mileage INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS clients (
+ id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL UNIQUE,
+ notes TEXT NOT NULL DEFAULT '', car_make TEXT NOT NULL DEFAULT '',
+ car_plate TEXT NOT NULL DEFAULT '', car_vin TEXT NOT NULL DEFAULT '',
+ created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS bookings (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id INTEGER NOT NULL REFERENCES clients(id), name TEXT NOT NULL, phone TEXT NOT NULL,
  service_id TEXT NOT NULL, service_name TEXT NOT NULL, parameters TEXT NOT NULL, services_snapshot TEXT, note TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL, duration INTEGER NOT NULL,
  post INTEGER NOT NULL, price INTEGER NOT NULL, price_max INTEGER NOT NULL, actual INTEGER, status TEXT NOT NULL CHECK(status IN ('booked','arrived','working','completed','cancelled','no_show')),
@@ -502,7 +507,7 @@ function migrateStudio(db) {
 function migrateTenant(db) {
   if (migrateAuth(db, "admin"), db.prepare("PRAGMA user_version").get().user_version > 3) throw new Error("Tenant database schema is newer than this application");
   transaction(db, () => {
-    db.prepare("PRAGMA table_info(bookings)").all().some((column) => column.name === "services_snapshot") || db.exec("ALTER TABLE bookings ADD COLUMN services_snapshot TEXT"), db.prepare("PRAGMA table_info(notifications)").all().some((column) => column.name === "message") || db.exec("ALTER TABLE notifications ADD COLUMN message TEXT"), addColumn(db, "clients", "license_plate", "TEXT NOT NULL DEFAULT ''"), addColumn(db, "clients", "vin", "TEXT NOT NULL DEFAULT ''"), addColumn(db, "clients", "mileage", "INTEGER"), db.exec("PRAGMA user_version=3");
+    addColumn(db, "bookings", "services_snapshot", "TEXT"), addColumn(db, "notifications", "message", "TEXT"), addColumn(db, "clients", "car_make", "TEXT NOT NULL DEFAULT ''"), addColumn(db, "clients", "car_plate", "TEXT NOT NULL DEFAULT ''"), addColumn(db, "clients", "car_vin", "TEXT NOT NULL DEFAULT ''"), db.exec("PRAGMA user_version=3");
   });
 }
 function transaction(db, fn) {
@@ -984,16 +989,10 @@ function initialize(store2, {
       manifestSchema.parse(source.manifest),
       source.credentials
     );
-    let current = readConfig(db2).config, renamed = !1;
-    if (/^Шиномо/i.test(current.name))
-      current.name = "АВТОСЕРВИС", renamed = !0;
-    if (/шиномо/i.test(current.seo.title))
-      current.seo.title = "АВТОСЕРВИС", renamed = !0;
-    renamed && (setConfig(db2, current), audit(db2, "settings.brand-renamed", "site", { name: current.name, title: current.seo.title }));
-    existsSync2(join2(sourceDir2, "deploy/seed-uploads")) && cpSync(
+    existsSync2(join2(sourceDir2, "deploy/seed-uploads")) && !existsSync2(join2(store2.dir, "uploads", singleSite2)) && cpSync(
       join2(sourceDir2, "deploy/seed-uploads"),
       join2(store2.dir, "uploads"),
-      { recursive: !0, force: !1, errorOnExist: !1 }
+      { recursive: !0 }
     );
     return;
   }
@@ -1724,6 +1723,22 @@ function createApp(store2, options) {
         "SELECT * FROM booking_history WHERE booking_id=? ORDER BY id DESC"
       ).all(b.id)
     });
+  }), app2.get("/api/s/:site/admin/clients/search", (c) => {
+    let query = (c.req.query("q") ?? "").trim();
+    if (!query || query.length > 200)
+      throw new DomainError(400, "\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0441\u0442\u0440\u043E\u043A\u0443 \u043F\u043E\u0438\u0441\u043A\u0430 \u0434\u043E 200 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432");
+    let normalized = query.toLocaleLowerCase("ru-RU"), clients = c.get("db").prepare(
+      "SELECT c.*,COUNT(b.id) AS visits,SUM(CASE WHEN b.status='completed' THEN b.actual ELSE 0 END) AS actual,MAX(b.start) AS last_visit FROM clients c LEFT JOIN bookings b ON b.client_id=c.id AND b.deleted_at IS NULL GROUP BY c.id ORDER BY c.created_at DESC"
+    ).all().filter(
+      (client) => [
+        client.name,
+        client.phone,
+        client.car_make,
+        client.car_plate,
+        client.car_vin
+      ].join(" ").toLocaleLowerCase("ru-RU").includes(normalized)
+    ).slice(0, 200);
+    return c.json({ clients });
   }), app2.post("/api/s/:site/admin/bookings/:id/message", async (c) => {
     let data = await jsonBody(c, z4.object({ text: z4.string().min(1).max(1e3) }));
     return c.json(queueManualMessage(c.get("db"), Number(c.req.param("id")), data.text), 201);
@@ -1754,21 +1769,33 @@ function createApp(store2, options) {
         name: z4.string().trim().min(2).max(120),
         phone: z4.string().trim().min(5).max(32),
         notes: z4.string().max(5e3).default(""),
-        license_plate: z4.string().trim().max(20).optional(),
-        vin: z4.string().trim().max(17).optional(),
-        mileage: z4.number().int().min(0).max(9999999).nullable().optional()
+        carMake: z4.string().trim().max(120).optional(),
+        carPlate: z4.string().trim().max(32).optional(),
+        carVin: z4.string().trim().max(64).optional()
       })
     ), phone = normalizePhone(data.phone), db = c.get("db"), existing = db.prepare("SELECT * FROM clients WHERE phone=?").get(phone);
     if (existing)
-      return db.prepare("UPDATE clients SET name=?,notes=?,license_plate=?,vin=?,mileage=? WHERE id=?").run(
+      return db.prepare(
+        "UPDATE clients SET name=?,notes=?,car_make=?,car_plate=?,car_vin=? WHERE id=?"
+      ).run(
         data.name,
         data.notes,
-        data.license_plate ? data.license_plate.toUpperCase() : existing.license_plate,
-        data.vin ? data.vin.toUpperCase() : existing.vin,
-        data.mileage == null ? existing.mileage : data.mileage,
+        data.carMake ?? existing.car_make,
+        data.carPlate ?? existing.car_plate,
+        data.carVin ?? existing.car_vin,
         existing.id
       ), audit(db, "client.updated", String(existing.id), { source: "admin" }), c.json(db.prepare("SELECT * FROM clients WHERE id=?").get(existing.id));
-    let result = db.prepare("INSERT INTO clients(name,phone,notes,license_plate,vin,mileage,created_at) VALUES(?,?,?,?,?,?,?)").run(data.name, phone, data.notes, (data.license_plate ?? "").toUpperCase(), (data.vin ?? "").toUpperCase(), data.mileage ?? null, Date.now()), id = Number(result.lastInsertRowid);
+    let result = db.prepare(
+      "INSERT INTO clients(name,phone,notes,car_make,car_plate,car_vin,created_at) VALUES(?,?,?,?,?,?,?)"
+    ).run(
+      data.name,
+      phone,
+      data.notes,
+      data.carMake ?? "",
+      data.carPlate ?? "",
+      data.carVin ?? "",
+      Date.now()
+    ), id = Number(result.lastInsertRowid);
     return audit(db, "client.created", String(id), { source: "admin" }), c.json(db.prepare("SELECT * FROM clients WHERE id=?").get(id), 201);
   }), app2.patch("/api/s/:site/admin/clients/:id", async (c) => {
     let data = await jsonBody(
@@ -1777,21 +1804,23 @@ function createApp(store2, options) {
         name: z4.string().trim().min(2).max(120).optional(),
         phone: z4.string().trim().min(5).max(32).optional(),
         notes: z4.string().max(5e3).optional(),
-        license_plate: z4.string().trim().max(20).optional(),
-        vin: z4.string().trim().max(17).optional(),
-        mileage: z4.number().int().min(0).max(9999999).nullable().optional()
+        carMake: z4.string().trim().max(120).optional(),
+        carPlate: z4.string().trim().max(32).optional(),
+        carVin: z4.string().trim().max(64).optional()
       })
     ), db = c.get("db"), id = Number(c.req.param("id")), old = db.prepare("SELECT * FROM clients WHERE id=?").get(id);
     if (!old) throw new DomainError(404, "\u041A\u043B\u0438\u0435\u043D\u0442 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D");
     let phone = data.phone ? normalizePhone(data.phone) : old.phone;
     if (db.prepare("SELECT id FROM clients WHERE phone=? AND id<>?").get(phone, id)) throw new DomainError(409, "\u041A\u043B\u0438\u0435\u043D\u0442 \u0441 \u0442\u0430\u043A\u0438\u043C \u0442\u0435\u043B\u0435\u0444\u043E\u043D\u043E\u043C \u0443\u0436\u0435 \u0435\u0441\u0442\u044C");
-    return db.prepare("UPDATE clients SET name=?,phone=?,notes=?,license_plate=?,vin=?,mileage=? WHERE id=?").run(
+    return db.prepare(
+      "UPDATE clients SET name=?,phone=?,notes=?,car_make=?,car_plate=?,car_vin=? WHERE id=?"
+    ).run(
       data.name ?? old.name,
       phone,
       data.notes ?? old.notes,
-      data.license_plate === void 0 ? old.license_plate : data.license_plate.toUpperCase(),
-      data.vin === void 0 ? old.vin : data.vin.toUpperCase(),
-      data.mileage === void 0 ? old.mileage : data.mileage,
+      data.carMake ?? old.car_make,
+      data.carPlate ?? old.car_plate,
+      data.carVin ?? old.car_vin,
       id
     ), audit(db, "client.updated", String(id), {}), c.json(db.prepare("SELECT * FROM clients WHERE id=?").get(id));
   }), app2.delete("/api/s/:site/admin/clients/:id", (c) => {
