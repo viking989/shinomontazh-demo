@@ -989,6 +989,18 @@ function initialize(store2, {
       manifestSchema.parse(source.manifest),
       source.credentials
     );
+    // Explicit, temporary administrator credential reset for a deployed single-site instance.
+    // Enable RESET_ADMIN_CREDENTIALS=true, deploy once, then remove the flag.
+    if (process.env.RESET_ADMIN_CREDENTIALS === "true") {
+      const resetPassword = process.env.ADMIN_PASSWORD ?? "";
+      if (resetPassword.length < 12)
+        throw new Error("RESET_ADMIN_CREDENTIALS requires ADMIN_PASSWORD of at least 12 characters");
+      const resetLogin = process.env.ADMIN_LOGIN || "admin";
+      db2.prepare("UPDATE users SET username=?,password=?,changed_at=? WHERE id=1").run(
+        resetLogin, passwordHash(resetPassword), Date.now()
+      );
+      db2.prepare("DELETE FROM sessions").run();
+    }
     existsSync2(join2(sourceDir2, "deploy/seed-uploads")) && !existsSync2(join2(store2.dir, "uploads", singleSite2)) && cpSync(
       join2(sourceDir2, "deploy/seed-uploads"),
       join2(store2.dir, "uploads"),
